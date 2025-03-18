@@ -1,0 +1,94 @@
+#include <Wire.h>
+#include <RTClib.h>
+#include <LiquidCrystal.h>
+
+// Initialize RTC module
+RTC_DS3231 rtc;
+
+// Define LCD pins
+const int rs = 12, en = 11, d4 = 5, d5 = 4, d6 = 3, d7 = 2;
+LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
+
+// Alarm settings for 7:03 PM
+const int alarmHour = 4;  // 7 PM in 24-hour format
+const int alarmMinute = 50; // 03 minutes
+
+// Components
+const int buzzerPin = 10;  // Buzzer
+const int buttonPin = 7;   // Button
+const int redLED = 8;      // Red LED
+const int yellowLED = 9;   // Yellow LED
+bool alarmTriggered = false;
+bool alarmStopped = false; // Tracks if the alarm was stopped
+unsigned long lastButtonPress = 0;
+const unsigned long debounceDelay = 200;
+
+void setup() {
+  pinMode(buzzerPin, OUTPUT);
+  pinMode(redLED, OUTPUT);
+  pinMode(yellowLED, OUTPUT);
+  pinMode(buttonPin, INPUT_PULLUP);
+
+  lcd.begin(16, 2);
+  Wire.begin();
+
+  if (!rtc.begin()) {
+    lcd.print("RTC NOT FOUND!");
+    while (1);
+  }
+
+  if (rtc.lostPower()) {
+    rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+  }
+}
+
+void loop() {
+  DateTime now = rtc.now();
+
+  // Display time on LCD
+  lcd.setCursor(0, 0);
+  lcd.print("Time: ");
+  lcd.print(now.hour());
+  lcd.print(":");
+  if (now.minute() < 10) lcd.print("0");  // Leading zero for single-digit minutes
+  lcd.print(now.minute());
+  lcd.print("  ");
+
+  // Reset alarm at midnight
+  if (now.hour() == 0 && now.minute() == 0) {
+    alarmStopped = false;
+  }
+
+  // Check if it's alarm time and it hasn't been stopped
+  if (now.hour() == alarmHour && now.minute() == alarmMinute && !alarmTriggered && !alarmStopped) {
+    alarmTriggered = true;
+    tone(buzzerPin, 1000);  // Activate buzzer
+    lcd.setCursor(0, 1);
+    lcd.print("ALARM ON!!  ");
+  }
+
+  // Blink LEDs when alarm is on
+  if (alarmTriggered) {
+    digitalWrite(redLED, HIGH);
+    digitalWrite(yellowLED, LOW);
+    delay(1000);
+    digitalWrite(redLED, LOW);
+    digitalWrite(yellowLED, HIGH);
+    delay(1000);
+  }
+
+  // Stop alarm when button is pressed
+  if (digitalRead(buttonPin) == LOW && (millis() - lastButtonPress) > debounceDelay) {
+    lastButtonPress = millis();
+    noTone(buzzerPin);
+    digitalWrite(redLED, LOW);
+    digitalWrite(yellowLED, LOW);
+    alarmTriggered = false;
+    alarmStopped = true; // Prevent the alarm from triggering again until the next day
+    lcd.setCursor(0, 1);
+    lcd.print("Alarm Stopped  ");
+    delay(500);
+  }
+
+  delay(1000);
+}
